@@ -1,0 +1,193 @@
+
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>I miei turni</title>
+<style>
+body{font-family:Arial;background:#f1f4f8;margin:0;color:#202b38}
+header{background:#173b65;color:white;padding:18px;text-align:center}
+main{padding:10px;max-width:800px;margin:auto}
+section{background:white;padding:12px;margin-bottom:12px;border-radius:10px}
+button,input,select{padding:10px;border-radius:6px;font-size:15px}
+button{background:#173b65;color:white;border:0}
+.month{display:flex;justify-content:space-between;align-items:center}
+.grid{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:3px}
+.week{text-align:center;font-size:11px;font-weight:bold}
+.day{min-height:70px;padding:3px 1px;background:#e3efff;color:#172b43;border:1px solid #ccd6e3;font-size:11px;overflow-wrap:anywhere}
+.day span{display:block;margin:4px 0}
+.rest{background:#e5e7eb}
+.interval{background:#fff0c9}
+label{display:block;margin:12px 0 5px}
+input,select{width:100%;box-sizing:border-box;border:1px solid #ccd3dc}
+.actions{display:flex;flex-wrap:wrap;gap:7px;margin-top:10px}
+.note{font-size:12px;color:#596778;line-height:1.5}
+</style>
+</head>
+<body>
+<header>
+<h2>I miei turni</h2>
+Calendario personale
+</header>
+<main>
+<section>
+<div class="month">
+<button id="prev">◀</button>
+<h3 id="title"></h3>
+<button id="next">▶</button>
+</div>
+<div class="grid" id="calendar"></div>
+<p class="note">Blu: lavoro · Giallo: Intervallo · Grigio: Riposo</p>
+</section>
+
+<section>
+<h3>Modifica giornata</h3>
+<label for="date">Data</label>
+<input type="date" id="date">
+<label for="turn">Turno</label>
+<select id="turn">
+<option>Giornata 1</option><option>Giornata 2</option>
+<option>Giornata 3</option><option>Giornata 4</option>
+<option>Giornata 5</option><option>Giornata 6</option>
+<option>Giornata 7</option><option>Giornata 8</option>
+<option>Giornata 9</option><option>Giornata 10</option>
+<option>Giornata 11</option><option>Giornata 12</option>
+<option>Giornata 13</option><option>Giornata 14</option>
+<option>Giornata 15</option><option>Giornata 16</option>
+<option>Giornata 17</option><option>Giornata 18</option>
+<option>Giornata 19</option><option>Giornata 20</option>
+<option>Intervallo</option><option>Riposo</option>
+</select>
+<div class="actions">
+<div style="flex:1"><label for="start">Inizio</label><input type="time" id="start"></div>
+<div style="flex:1"><label for="end">Fine</label><input type="time" id="end"></div>
+</div>
+<div class="actions">
+<button id="save">Salva modifica</button>
+<button id="reset">Ripristina turno automatico</button>
+</div>
+<p id="status" class="note"></p>
+</section>
+
+<section>
+<h3>Impostazioni</h3>
+<label for="anchor">Data iniziale del ciclo (Giornata 16)</label>
+<input type="date" id="anchor" value="2026-10-04">
+<label for="slip">Primo slittamento</label>
+<input type="date" id="slip" value="2026-10-24">
+<label for="period">Intervallo slittamenti, in giorni</label>
+<input type="number" id="period" value="28" min="1">
+<button id="settings" style="margin-top:10px">Salva impostazioni</button>
+<p class="note">Le modifiche vengono conservate nel browser di questo dispositivo.</p>
+</section>
+
+<section>
+<h3>Esporta</h3>
+<div class="actions">
+<button id="csv">Scarica CSV</button>
+<button id="pdf">Stampa / PDF</button>
+</div>
+</section>
+</main>
+
+<script>
+const $=id=>document.getElementById(id);
+const KEY="mieiTurniSemplice";
+const labels=[];
+for(let g=0;g<4;g++){
+ for(let i=1;i<=5;i++)labels.push("Giornata "+(g*5+i));
+ labels.push("Intervallo","Riposo");
+}
+let saved={overrides:{},times:{}};
+try{saved=JSON.parse(localStorage.getItem(KEY))||saved}catch(e){}
+if(!saved.overrides)saved.overrides={};
+if(!saved.times)saved.times={};
+
+let year=2026,month=9,selected="";
+const names=["Lun","Mar","Mer","Gio","Ven","Sab","Dom"];
+
+function key(d){
+ return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");
+}
+function dateObj(k){
+ let p=k.split("-").map(Number);
+ return new Date(p[0],p[1]-1,p[2]);
+}
+function diff(a,b){
+ return Math.round((Date.UTC(...a.split("-").map(Number).map((v,i)=>i===1?v-1:v))-
+ Date.UTC(...b.split("-").map(Number).map((v,i)=>i===1?v-1:v)))/86400000);
+}
+function mod(a,b){return ((a%b)+b)%b}
+function index(k){
+ let anchor=$("anchor").value||"2026-10-04";
+ let slip=$("slip").value||"2026-10-24";
+ let d=diff(k,anchor);
+ let original=mod(21+d,28);
+ let sd=diff(k,slip);
+ let period=Math.max(1,Number($("period").value)||28);
+ let repeats=sd<=0?0:Math.ceil(sd/period);
+ return mod(original-repeats,28);
+}
+function automatic(k){return labels[index(k)]}
+function get(k){return saved.overrides[k]||{turn:automatic(k),start:"",end:""}}
+function persist(){
+ try{localStorage.setItem(KEY,JSON.stringify(saved))}
+ catch(e){$("status").textContent="Salvataggio non disponibile in questo browser."}
+}
+function render(){
+ $("title").textContent=new Date(year,month,1).toLocaleDateString("it-IT",{month:"long",year:"numeric"});
+ let c=$("calendar");c.replaceChildren();
+ names.forEach(n=>{let x=document.createElement("div");x.className="week";x.textContent=n;c.appendChild(x)});
+ let first=(new Date(year,month,1).getDay()+6)%7;
+ for(let i=0;i<first;i++){let x=document.createElement("div");c.appendChild(x)}
+ let count=new Date(year,month+1,0).getDate();
+ for(let d=1;d<=count;d++){
+  let k=key(new Date(year,month,d)),v=get(k);
+  let b=document.createElement("button");
+  b.className="day "+(/Riposo/i.test(v.turn)?"rest":/Intervallo/i.test(v.turn)?"interval":"");
+  let n=document.createElement("span");n.textContent=d;
+  let t=document.createElement("span");t.textContent=v.turn;
+  b.append(n,t);
+  if(v.start||v.end){let tm=document.createElement("span");tm.textContent=v.start+"-"+v.end;b.append(tm)}
+  b.onclick=()=>openDay(k);c.appendChild(b);
+ }
+}
+function openDay(k){
+ selected=k;$("date").value=k;
+ let v=get(k);$("turn").value=v.turn;
+ $("start").value=v.start||"";$("end").value=v.end||"";
+ $("status").textContent="Turno automatico: "+automatic(k);
+}
+$("prev").onclick=()=>{month--;if(month<0){month=11;year--}render()};
+$("next").onclick=()=>{month++;if(month>11){month=0;year++}render()};
+$("date").onchange=()=>{if($("date").value)openDay($("date").value)};
+$("save").onclick=()=>{
+ let k=$("date").value;if(!k){alert("Scegli una data");return}
+ saved.overrides[k]={turn:$("turn").value,start:$("start").value,end:$("end").value};
+ persist();render();openDay(k);$("status").textContent="Modifica salvata.";
+};
+$("reset").onclick=()=>{
+ let k=$("date").value;if(!k)return;
+ delete saved.overrides[k];persist();render();openDay(k);
+ $("status").textContent="Turno automatico ripristinato.";
+};
+$("settings").onclick=()=>{persist();render();$("status").textContent="Impostazioni salvate."};
+$("csv").onclick=()=>{
+ let rows=[["Data","Turno","Inizio","Fine"]];
+ let count=new Date(year,month+1,0).getDate();
+ for(let d=1;d<=count;d++){
+  let k=key(new Date(year,month,d)),v=get(k);
+  rows.push([k,v.turn,v.start||"",v.end||""]);
+ }
+ let csv="\uFEFF"+rows.map(r=>r.map(v=>'"'+String(v).replace(/"/g,'""')+'"').join(";")).join("\r\n");
+ let a=document.createElement("a");
+ a.href=URL.createObjectURL(new Blob([csv],{type:"text/csv;charset=utf-8"}));
+ a.download="I-miei-turni.csv";a.click();URL.revokeObjectURL(a.href);
+};
+$("pdf").onclick=()=>window.print();
+render();
+openDay("2026-10-24");
+</script>
+</body>
+</html>
