@@ -64,6 +64,12 @@ Calendario personale
 <div style="flex:1"><label for="start">Inizio</label><input type="time" id="start"></div>
 <div style="flex:1"><label for="end">Fine</label><input type="time" id="end"></div>
 </div>
+ 
+<label>
+  <input type="checkbox" id="standard">
+  Usa questi orari come standard per questo turno
+</label>
+
 <div class="actions">
 <button id="save">Salva modifica</button>
 <button id="reset">Ripristina turno automatico</button>
@@ -131,7 +137,18 @@ function index(k){
  return mod(original-repeats,28);
 }
 function automatic(k){return labels[index(k)]}
-function get(k){return saved.overrides[k]||{turn:automatic(k),start:"",end:""}}
+
+function get(k){
+  const override=saved.overrides[k];
+  const turn=override?.turn||automatic(k);
+  const standard=saved.times[turn]||{start:"",end:""};
+  return {
+    turn,
+    start:override?.start||standard.start||"",
+    end:override?.end||standard.end||""
+  };
+}
+ 
 function persist(){
  try{localStorage.setItem(KEY,JSON.stringify(saved))}
  catch(e){$("status").textContent="Salvataggio non disponibile in questo browser."}
@@ -154,20 +171,50 @@ function render(){
   b.onclick=()=>openDay(k);c.appendChild(b);
  }
 }
+
 function openDay(k){
- selected=k;$("date").value=k;
- let v=get(k);$("turn").value=v.turn;
- $("start").value=v.start||"";$("end").value=v.end||"";
+ selected=k;
+ $("date").value=k;
+ $("standard").checked=false;
+ let v=get(k);
+ $("turn").value=v.turn;
+ $("start").value=v.start||"";
+ $("end").value=v.end||"";
  $("status").textContent="Turno automatico: "+automatic(k);
 }
+ 
 $("prev").onclick=()=>{month--;if(month<0){month=11;year--}render()};
 $("next").onclick=()=>{month++;if(month>11){month=0;year++}render()};
 $("date").onchange=()=>{if($("date").value)openDay($("date").value)};
+
 $("save").onclick=()=>{
- let k=$("date").value;if(!k){alert("Scegli una data");return}
- saved.overrides[k]={turn:$("turn").value,start:$("start").value,end:$("end").value};
- persist();render();openDay(k);$("status").textContent="Modifica salvata.";
+ let k=$("date").value;
+ if(!k){alert("Scegli una data");return}
+ const turn=$("turn").value;
+ const start=$("start").value;
+ const end=$("end").value;
+
+ if($("standard").checked){
+   saved.times[turn]={start,end};
+   for(const key of Object.keys(saved.overrides)){
+     if(saved.overrides[key].turn===turn){
+       delete saved.overrides[key].start;
+       delete saved.overrides[key].end;
+     }
+   }
+   delete saved.overrides[k];
+ }else{
+   saved.overrides[k]={turn,start,end};
+ }
+
+ persist();
+ render();
+ openDay(k);
+ $("status").textContent=$("standard").checked
+   ?"Orari standard salvati."
+   :"Modifica salvata.";
 };
+ 
 $("reset").onclick=()=>{
  let k=$("date").value;if(!k)return;
  delete saved.overrides[k];persist();render();openDay(k);
